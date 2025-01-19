@@ -27,9 +27,8 @@ pipeline {
                 withSonarQubeEnv('sonar-server') {
                     sh """
                     ${SCANNER_HOME}/bin/sonar-scanner \
-                    -Dsonar.projectName=simple-web-app \
+                    -Dsonar.projectName=Simple-web-app \
                     -Dsonar.projectKey=simple-web-app
-                    -X
                     """
                 }
             }
