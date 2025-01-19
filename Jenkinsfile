@@ -29,7 +29,7 @@ pipeline {
                     ${SCANNER_HOME}/bin/sonar-scanner \
                     -Dsonar.projectName=simple-web-app \
                     -Dsonar.projectKey=simple-web-app
-                    'sonar-scanner -X'
+                    -X
                     """
                 }
             }
