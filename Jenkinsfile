@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     tools {
-        jdk 'JDK'
-        nodejs 'NodeJS'
+        jdk 'JDK'       // Ensure you configure JDK in Jenkins with this name
+        nodejs 'NodeJS' // Ensure you configure NodeJS in Jenkins with this name
     }
 
     parameters {
@@ -12,9 +12,7 @@ pipeline {
     }
 
     environment {
-        SCANNER_HOME = tool 'SonarQube Scanner'
-        AWS_REGION = 'us-east-1'
-        IMAGE_NAME = "${params.ECR_REPO_NAME}"
+        SCANNER_HOME = tool 'SonarQube Scanner' // Ensure this matches the configured name of the SonarQube scanner
     }
 
     stages {
@@ -30,8 +28,8 @@ pipeline {
                     sh """
                     ${SCANNER_HOME}/bin/sonar-scanner \
                     -Dsonar.projectName=simple-web-app \
-                    -Dsonar.projectKey=simple-web-app \
-                    -X
+                    -Dsonar.projectKey=simple-web-app
+                    'sonar-scanner -X'
                     """
                 }
             }
@@ -39,7 +37,7 @@ pipeline {
 
         stage('Quality Gates: 3') {
             steps {
-                waitForQualityGate abortPipeline: true, pollingIntervalInSeconds: 30
+                waitForQualityGate abortPipeline: true
             }
         }
 
@@ -57,16 +55,21 @@ pipeline {
 
         stage('Docker Build: 6') {
             steps {
-                sh 'docker build -t ${IMAGE_NAME} .'
+                sh 'docker build -t ${params.ECR_REPO_NAME} .'
             }
         }
 
         stage('Create ECR Repository: 7') {
             steps {
-                withEnv(['AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEYS', 'AWS_SECRET_ACCESS_KEY=$AWS_SECRET_KEYS']) {
+                withCredentials([
+                    string(credentialsId: 'access_keys', variable: 'AWS_ACCESS_KEYS'),
+                    string(credentialsId: 'secret_keys', variable: 'AWS_SECRET_KEYS')
+                ]) {
                     sh """
-                    aws ecr describe-repositories --repository-names ${IMAGE_NAME} --region ${AWS_REGION} || \
-                    aws ecr create-repository --repository-name ${IMAGE_NAME} --region ${AWS_REGION}
+                    aws configure set aws_access_key_id $AWS_ACCESS_KEYS
+                    aws configure set aws_secret_access_key $AWS_SECRET_KEYS
+                    aws ecr describe-repositories --repository-names ${params.ECR_REPO_NAME} --region us-east-1 || \
+                    aws ecr create-repository --repository-name ${params.ECR_REPO_NAME} --region us-east-1
                     """
                 }
             }
@@ -74,13 +77,16 @@ pipeline {
 
         stage('Login to ECR & Tag and Push Image: 8') {
             steps {
-                withEnv(['AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEYS', 'AWS_SECRET_ACCESS_KEY=$AWS_SECRET_KEYS']) {
+                withCredentials([
+                    string(credentialsId: 'access_keys', variable: 'AWS_ACCESS_KEYS'),
+                    string(credentialsId: 'secret_keys', variable: 'AWS_SECRET_KEYS')
+                ]) {
                     sh """
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                    docker tag ${IMAGE_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:$BUILD_NUMBER
-                    docker tag ${IMAGE_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:latest
-                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:$BUILD_NUMBER
-                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:latest
+                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
+                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:$BUILD_NUMBER
+                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
+                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:$BUILD_NUMBER
+                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
                     """
                 }
             }
@@ -89,9 +95,9 @@ pipeline {
         stage('Clean up Images from Jenkins: 9') {
             steps {
                 sh """
-                docker rmi ${IMAGE_NAME}
-                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:$BUILD_NUMBER
-                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_NAME}:latest
+                docker rmi ${params.ECR_REPO_NAME}
+                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:$BUILD_NUMBER
+                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
                 """
             }
         }
